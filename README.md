@@ -285,13 +285,18 @@ uv run noslacking run --channels general --force  # Clear stale locks first
 
 ### `sync`
 
-Incremental sync — fetches new messages posted since the last migration and posts them to the corresponding Google Chat spaces.
+Incremental sync — fetches new messages posted in Slack since the last migration and posts them to the corresponding Google Chat spaces. Run it once, or continuously on a schedule to keep both platforms in sync during a gradual rollout.
 
 ```bash
 uv run noslacking sync
 uv run noslacking sync --channels general
 uv run noslacking sync --dry-run
+
+# Run on a cron to keep Chat up to date while Slack is still active
+# e.g. every 5 minutes: */5 * * * * cd /path/to/noslacking && uv run noslacking sync
 ```
+
+> **Note:** Synced messages are posted using the regular Google Chat API (not import mode), so they will trigger notifications for space members. This is expected — import mode is only available during the initial migration. If you're running sync continuously, consider letting your team know that new messages will appear in Chat as they're posted in Slack.
 
 ## ⚙️ Configuration
 
