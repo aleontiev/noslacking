@@ -1,0 +1,39 @@
+# noslacking configuration
+# Secrets (tokens) must be set via environment variables or .env file
+
+data_dir: "~/.noslacking"
+log_level: "INFO"
+
+slack:
+  channel_types:
+    - public_channel
+    - private_channel
+    # - mpim
+    # - im
+  include_channels: []
+  exclude_channels: []
+  include_archived: false
+  messages_per_page: 200
+  extract_files: true
+  extract_threads: true
+  max_file_size_mb: 100
+
+google:
+  service_account_key: "~/.noslacking/service-account.json"
+  domain: "yourdomain.com"
+  admin_email: "admin@yourdomain.com"
+  file_upload_method: "google_drive"  # "chat_api" or "google_drive"
+  messages_per_second: 8
+  spaces_per_minute: 50
+  concurrent_spaces: 3
+
+user_mapping:
+  strategy: "email"  # "email" or "manual"
+  overrides: {}
+  unmapped_action: "attribute"  # "attribute" or "skip"
+
+migration:
+  include_system_messages: false
+  dry_run: false
+  space_name_template: "[Slack] {name}"
+  space_description_template: "Migrated from Slack channel #{name}"
