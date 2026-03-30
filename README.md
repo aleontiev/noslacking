@@ -8,29 +8,11 @@
 
 ---
 
-[💡 Why?](#-why) · [✨ Features](#-features) · [📋 Prerequisites](#-prerequisites) · [📦 Installation](#-installation) · [🚀 Quick Start](#-quick-start) · [🛠 Commands](#-commands) · [⚙️ Configuration](#️-configuration) · [🔍 How It Works](#-how-it-works) · [📁 Data Directory](#-data-directory) · [👩‍💻 Development](#-development) · [📄 License](#-license)
+[💡 Why?](#-why) · [✨ Features](#-features) · [📋 Prerequisites](#-prerequisites) · [📦 Installation](#-installation) · [🚀 Quick Start](#-quick-start) · [🛠 Commands](#-commands) · [⚙️ Configuration](#️-configuration) · [🔍 How It Works](#-how-it-works) · [📄 License](#-license)
 
 ---
 
 No Slack export files needed. Reads directly from the Slack API, transforms messages/threads/files/reactions, and writes them into Google Chat using [import mode](https://developers.google.com/workspace/chat/import-data-overview) so that original timestamps and authors are preserved.
-
-```
-$ noslacking migrate
-
-  Migrating 47 channels...
-  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 100% 47/47
-
-       Migration Summary
-  ┌────────────────────┬───────┐
-  │ Metric             │ Count │
-  ├────────────────────┼───────┤
-  │ Channels Created   │    47 │
-  │ Channels Completed │    47 │
-  │ Messages Migrated  │ 84291 │
-  │ Members Added      │   312 │
-  │ Files Uploaded     │  1038 │
-  └────────────────────┴───────┘
-```
 
 ## 💡 Why?
 
@@ -109,16 +91,67 @@ Optionally, generate a **User OAuth Token** (`xoxp-...`) for broader access to p
    - **Admin SDK API**
    - **Google Drive API** (if uploading files to Drive)
 3. Create a **service account** with a JSON key file
+
+   <details>
+   <summary>Step-by-step: creating a service account via <code>gcloud</code></summary>
+
+   ```bash
+   # Set your project
+   gcloud config set project YOUR_PROJECT_ID
+
+   # Create the service account
+   gcloud iam service-accounts create noslacking \
+     --display-name="noslacking migration"
+
+   # Create and download a JSON key
+   gcloud iam service-accounts keys create service-account.json \
+     --iam-account=noslacking@YOUR_PROJECT_ID.iam.gserviceaccount.com
+
+   # Enable required APIs
+   gcloud services enable chat.googleapis.com
+   gcloud services enable admin.googleapis.com
+   gcloud services enable drive.googleapis.com
+
+   # Move the key to your data directory
+   mv service-account.json ~/.noslacking/service-account.json
+   ```
+
+   You can also create the service account in the [GCP Console](https://console.cloud.google.com/iam-admin/serviceaccounts) under **IAM & Admin > Service Accounts**.
+
+   </details>
+
 4. Enable **domain-wide delegation** on the service account
-5. In the Google Workspace Admin Console, authorize the service account client ID with these scopes:
-   - `https://www.googleapis.com/auth/chat.import`
-   - `https://www.googleapis.com/auth/chat.spaces`
-   - `https://www.googleapis.com/auth/chat.spaces.create`
-   - `https://www.googleapis.com/auth/chat.memberships`
-   - `https://www.googleapis.com/auth/chat.messages`
-   - `https://www.googleapis.com/auth/chat.messages.create`
-   - `https://www.googleapis.com/auth/admin.directory.user.readonly`
-   - `https://www.googleapis.com/auth/drive.file` (if using Drive uploads)
+
+   <details>
+   <summary>Step-by-step: setting up domain-wide delegation</summary>
+
+   **In the GCP Console:**
+
+   1. Go to [IAM & Admin > Service Accounts](https://console.cloud.google.com/iam-admin/serviceaccounts)
+   2. Click your service account > **Details** > **Advanced settings**
+   3. Under **Domain-wide delegation**, click **Enable** and note the **Client ID**
+
+   **In the Google Workspace Admin Console:**
+
+   1. Go to [admin.google.com](https://admin.google.com) > **Security** > **Access and data control** > **API controls**
+   2. Click **Manage Domain Wide Delegation** > **Add new**
+   3. Enter the **Client ID** from the previous step
+   4. Add the following OAuth scopes (comma-separated):
+
+   ```
+   https://www.googleapis.com/auth/chat.import,
+   https://www.googleapis.com/auth/chat.spaces,
+   https://www.googleapis.com/auth/chat.spaces.create,
+   https://www.googleapis.com/auth/chat.memberships,
+   https://www.googleapis.com/auth/chat.messages,
+   https://www.googleapis.com/auth/chat.messages.create,
+   https://www.googleapis.com/auth/admin.directory.user.readonly,
+   https://www.googleapis.com/auth/drive.file
+   ```
+
+   5. Click **Authorize**
+
+   </details>
 
 ## 📦 Installation
 
@@ -289,14 +322,14 @@ flowchart LR
     style E fill:#0d652d,color:#fff
 ```
 
-1. **Extract** — reads all channels, users, messages, threads, and file metadata from Slack via API and stores them in a local SQLite database
-2. **Map users** — matches Slack users to Google Workspace accounts by email address
-3. **Create spaces** — creates Google Chat spaces in [import mode](https://developers.google.com/workspace/chat/import-data-overview), which allows setting historical `createTime` on messages
-4. **Post messages** — sends each message impersonating the original author (via domain-wide delegation), preserving timestamps and threading
-5. **Upload files** — downloads attachments from Slack and uploads to Google Drive, linking them back in the message
-6. **Add reactions** — re-creates emoji reactions per user
-7. **Complete import** — calls `completeImport` to end import mode and make the space visible
-8. **Add members** — adds channel members to the Google Chat space as active members
+1. **Extract** — pull channels, users, messages, and files from Slack
+2. **Map users** — match Slack users to Google accounts by email
+3. **Create spaces** — open Google Chat spaces in import mode
+4. **Post messages** — send as original author with original timestamp
+5. **Upload files** — download from Slack, upload to Google Drive
+6. **Add reactions** — re-create emoji reactions per user
+7. **Complete import** — finalize spaces and make them visible
+8. **Add members** — add channel members as active participants
 
 ### Status Tracking
 
@@ -336,7 +369,7 @@ All state is tracked in `~/.noslacking/migration.db` (SQLite). If the process is
 
 Messages are posted as the original author using Google Workspace domain-wide delegation. If a Slack user has no matching Google account, the message is posted by the admin account with an attribution line (e.g., `*John Doe:* original message`).
 
-## 📁 Data Directory
+### Data Directory
 
 By default, all data is stored in `~/.noslacking/`:
 
@@ -351,22 +384,6 @@ By default, all data is stored in `~/.noslacking/`:
     channels/<id>/messages.json
   cache/files/         # Downloaded Slack file attachments
   logs/                # Rotating log files
-```
-
-## 👩‍💻 Development
-
-```bash
-# Install with dev dependencies
-uv sync --extra dev
-
-# Run linter
-uv run ruff check src/
-
-# Run type checker
-uv run mypy src/
-
-# Run tests
-uv run pytest
 ```
 
 ## 📄 License

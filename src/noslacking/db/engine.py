@@ -23,7 +23,7 @@ def init_db(db_path: Path) -> Engine:
     db_path.parent.mkdir(parents=True, exist_ok=True)
     _engine = create_engine(
         f"sqlite:///{db_path}", echo=False,
-        connect_args={"timeout": 30},  # Wait up to 30s for DB lock
+        connect_args={"timeout": 120},  # Wait up to 120s for DB lock
     )
 
     # Enable WAL mode + tuning for concurrent multi-process access
@@ -33,7 +33,7 @@ def init_db(db_path: Path) -> Engine:
         cursor.execute("PRAGMA journal_mode=WAL")
         cursor.execute("PRAGMA foreign_keys=ON")
         cursor.execute("PRAGMA synchronous=NORMAL")
-        cursor.execute("PRAGMA busy_timeout=30000")
+        cursor.execute("PRAGMA busy_timeout=120000")
         cursor.close()
 
     Base.metadata.create_all(_engine)
@@ -67,15 +67,33 @@ def get_engine() -> Engine:
 
 @contextmanager
 def get_session() -> Generator[Session, None, None]:
-    """Provide a transactional session scope."""
+    """Provide a transactional session scope with retry on database lock."""
     if _session_factory is None:
         raise RuntimeError("Database not initialized. Call init_db() first.")
     session = _session_factory()
     try:
         yield session
-        session.commit()
+        _commit_with_retry(session)
     except Exception:
         session.rollback()
         raise
     finally:
         session.close()
+
+
+def _commit_with_retry(session: Session, max_retries: int = 3) -> None:
+    """Commit with retry on transient SQLite lock errors."""
+    import sqlite3
+    import time
+    from sqlalchemy.exc import OperationalError
+
+    for attempt in range(max_retries):
+        try:
+            session.commit()
+            return
+        except OperationalError as e:
+            if "database is locked" in str(e) and attempt < max_retries - 1:
+                session.rollback()
+                time.sleep(1 + attempt)  # Back off 1s, 2s, 3s
+                continue
+            raise
