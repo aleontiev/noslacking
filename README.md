@@ -186,6 +186,9 @@ uv run noslacking migrate
 
 # 6. Check progress at any time
 uv run noslacking status
+
+# Or do it all for a single channel:
+uv run noslacking run --channels general
 ```
 
 ## 🛠 Commands
@@ -207,15 +210,24 @@ Pulls all channels, users, messages, threads, and file metadata from Slack into 
 ```bash
 uv run noslacking extract
 uv run noslacking extract --channels general,engineering
+uv run noslacking extract --channel-types im,mpim        # Only DMs and group DMs
+uv run noslacking extract --channel-types public_channel  # Only public channels
 uv run noslacking extract --since 2024-01-01T00:00:00Z
 uv run noslacking extract --skip-threads --skip-files
 uv run noslacking extract --no-resume    # Re-extract everything
+uv run noslacking extract --force        # Clear stale locks from crashed workers
+```
 
-# Run multiple extractions in parallel (safe — each process works on different channels)
-uv run noslacking extract --channels general,engineering,product &
-uv run noslacking extract --channels support,sales,marketing &
+**Parallel extraction** — run multiple processes safely against the same database. Each process claims channels atomically so there's no duplication:
+
+```bash
+# Extract DMs and public channels simultaneously
+uv run noslacking extract --channel-types im,mpim &
+uv run noslacking extract --channel-types public_channel &
 wait
 ```
+
+If a process is killed mid-extraction, re-running will show a lock warning. Use `--force` to clear it, or wait 30 minutes for the stale lock to expire automatically. Ctrl+C releases locks gracefully.
 
 ### `map-users`
 
@@ -260,6 +272,17 @@ uv run noslacking status --detail
 uv run noslacking status --errors        # Show only failed channels
 ```
 
+### `run`
+
+Extract and migrate specific channels in one shot — useful for testing individual channels or migrating a single conversation end-to-end.
+
+```bash
+uv run noslacking run --channels general
+uv run noslacking run --channels D01FPS85Z8W  # A DM by Slack channel ID
+uv run noslacking run --channels general --dry-run
+uv run noslacking run --channels general --force  # Clear stale locks first
+```
+
 ### `sync`
 
 Incremental sync — fetches new messages posted since the last migration and posts them to the corresponding Google Chat spaces.
@@ -292,7 +315,7 @@ See [`config.example.yaml`](config.example.yaml) for all options. Key settings:
 
 | Section | Option | Default | Description |
 |---------|--------|---------|-------------|
-| `slack` | `channel_types` | `[public_channel, private_channel]` | Channel types to include |
+| `slack` | `channel_types` | `[public_channel, private_channel]` | Channel types to include (`im`, `mpim` for DMs) |
 | `slack` | `include_channels` | `[]` | Whitelist (empty = all) |
 | `slack` | `exclude_channels` | `[]` | Blacklist |
 | `slack` | `max_file_size_mb` | `100` | Skip files larger than this |
@@ -300,7 +323,9 @@ See [`config.example.yaml`](config.example.yaml) for all options. Key settings:
 | `google` | `messages_per_second` | `8` | Rate limit for Chat API writes |
 | `user_mapping` | `strategy` | `email` | How to match users (`email` or `manual`) |
 | `user_mapping` | `unmapped_action` | `attribute` | `attribute` (post as admin with name) or `skip` |
-| `migration` | `space_name_template` | `[Slack] {name}` | Google Chat space display name |
+| `migration` | `space_name_template` | `{name}` | Google Chat space display name template |
+| `migration` | `dm_space_prefix` | `[DM] ` | Prefix added to 1:1 DM space names |
+| `migration` | `group_dm_space_prefix` | `[DM] ` | Prefix added to group DM space names |
 | `migration` | `dry_run` | `false` | Default dry-run setting |
 
 ## 🔍 How It Works

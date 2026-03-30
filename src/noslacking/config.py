@@ -22,7 +22,7 @@ class SlackConfig(BaseModel):
 
 
 class GoogleConfig(BaseModel):
-    service_account_key: str = "~/.slack-to-chat/service-account.json"
+    service_account_key: str = "~/.noslacking/service-account.json"
     domain: str = ""
     admin_email: str = ""
     file_upload_method: str = "google_drive"
@@ -40,8 +40,10 @@ class UserMappingConfig(BaseModel):
 class MigrationConfig(BaseModel):
     include_system_messages: bool = False
     dry_run: bool = False
-    space_name_template: str = "[Slack] {name}"
+    space_name_template: str = "{name}"
     space_description_template: str = "Migrated from Slack channel #{name}"
+    dm_space_prefix: str = "[DM] "
+    group_dm_space_prefix: str = "[DM] "
 
 
 class Settings(BaseSettings):
@@ -51,8 +53,8 @@ class Settings(BaseSettings):
     google_service_account_key: str = ""
 
     # Paths
-    data_dir: str = "~/.slack-to-chat"
-    config_path: str = "~/.slack-to-chat/config.yaml"
+    data_dir: str = "~/.noslacking"
+    config_path: str = "~/.noslacking/config.yaml"
     log_level: str = "INFO"
 
     # Nested configs (populated from YAML)

@@ -216,7 +216,14 @@ class MigrationExecutor:
         if not space_name:
             # Resolve human-readable names for DMs and group DMs
             friendly_name = self._resolve_channel_display_name(channel)
-            display_name = self.settings.migration.space_name_template.format(name=friendly_name)
+            # Apply type-specific prefix
+            if channel.channel_type == "im":
+                prefix = self.settings.migration.dm_space_prefix
+            elif channel.channel_type == "mpim":
+                prefix = self.settings.migration.group_dm_space_prefix
+            else:
+                prefix = ""
+            display_name = prefix + self.settings.migration.space_name_template.format(name=friendly_name)
             description = self.settings.migration.space_description_template.format(
                 name=friendly_name
             )
@@ -243,6 +250,13 @@ class MigrationExecutor:
                     )
 
             stats["channels_created"] = 1
+
+        # Print links for tracking
+        slack_url = f"https://asaak.slack.com/archives/{channel.slack_channel_id}"
+        space_id = space_name.split("/")[-1] if space_name else ""
+        gchat_url = f"https://chat.google.com/room/{space_id}" if space_id else ""
+        console.print(f"  [dim]Slack: {slack_url}[/dim]")
+        console.print(f"  [dim]GChat: {gchat_url}[/dim]")
 
         # Step 2: Skip historical members — impersonation works without them.
         # Active members are added after completeImport (step 4).

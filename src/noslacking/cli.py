@@ -171,6 +171,7 @@ def extract(
     skip_files: bool = typer.Option(False, help="Skip file metadata extraction"),
     skip_threads: bool = typer.Option(False, help="Skip thread replies"),
     resume: bool = typer.Option(True, help="Resume from last position"),
+    force: bool = typer.Option(False, help="Clear stale locks from crashed workers"),
 ):
     """Extract all Slack data via API into local cache.
 
@@ -208,6 +209,7 @@ def extract(
             skip_files=skip_files,
             skip_threads=skip_threads,
             resume=resume,
+            force=force,
         )
 
         with get_session() as session:
@@ -450,14 +452,56 @@ def status(
     from noslacking.db.operations import get_channels, get_message_stats, get_users
 
     with get_session() as session:
-        channels = get_channels(session)
+        channels_raw = get_channels(session)
         users = get_users(session)
         msg_stats = get_message_stats(session)
+
+        # Build DM display names: resolve counterparty names for im/mpim
+        from noslacking.db.models import Membership, User
+        admin_email = settings.google.admin_email
+        admin_user = session.query(User).filter(User.slack_email == admin_email).first()
+        admin_id = admin_user.slack_user_id if admin_user else None
+
+        dm_labels: dict[str, str] = {}
+        for ch in channels_raw:
+            if ch.channel_type in ("im", "mpim"):
+                members = session.query(Membership).filter(
+                    Membership.slack_channel_id == ch.slack_channel_id
+                ).all()
+                others = []
+                for m in members:
+                    if m.slack_user_id == admin_id:
+                        continue
+                    u = session.get(User, m.slack_user_id)
+                    if u and u.slack_real_name:
+                        others.append(u.slack_real_name.split()[0])
+                    elif u and u.slack_display_name:
+                        others.append(u.slack_display_name)
+                    else:
+                        others.append(m.slack_user_id)
+                if others:
+                    dm_labels[ch.slack_channel_id] = " + ".join(others)
+
+        # Materialize attributes while session is open
+        channels = [
+            {
+                "name": ch.name,
+                "channel_type": ch.channel_type,
+                "channel_id": ch.slack_channel_id,
+                "message_count": ch.message_count,
+                "migration_status": ch.migration_status,
+                "google_space_name": ch.google_space_name,
+                "dm_label": dm_labels.get(ch.slack_channel_id),
+            }
+            for ch in channels_raw
+        ]
+        mapped_count = sum(1 for u in users if u.google_email)
+        user_count = len(users)
 
     # Aggregate channel stats
     status_counts: dict[str, int] = {}
     for ch in channels:
-        status_counts[ch.migration_status] = status_counts.get(ch.migration_status, 0) + 1
+        status_counts[ch["migration_status"]] = status_counts.get(ch["migration_status"], 0) + 1
 
     # Overall summary
     console.print(Panel("[bold]Migration Status[/bold]", style="blue"))
@@ -468,23 +512,24 @@ def status(
     summary.add_row("Total Channels", str(len(channels)))
     for s, c in sorted(status_counts.items()):
         summary.add_row(f"  {s}", str(c))
-    summary.add_row("Total Users", str(len(users)))
-    summary.add_row("  Mapped", str(len([u for u in users if u.google_email])))
+    summary.add_row("Total Users", str(user_count))
+    summary.add_row("  Mapped", str(mapped_count))
     for s, c in sorted(msg_stats.items()):
         summary.add_row(f"Messages ({s})", str(c))
     console.print(summary)
 
     # Per-channel detail
     if detail or errors_only:
-        table = Table(title="Channel Details")
-        table.add_column("Channel", style="cyan")
-        table.add_column("Type", style="dim")
-        table.add_column("Messages", justify="right")
-        table.add_column("Status", style="bold")
-        table.add_column("Google Space", style="dim")
+        table = Table(title="Channel Details", expand=True)
+        table.add_column("Channel", style="cyan", no_wrap=True, ratio=3)
+        table.add_column("Type", style="dim", ratio=1)
+        table.add_column("Messages", justify="right", ratio=1)
+        table.add_column("Status", style="bold", ratio=1)
+        table.add_column("Google Space", style="dim", ratio=2)
 
-        for ch in sorted(channels, key=lambda c: c.name):
-            if errors_only and ch.migration_status != "failed":
+        type_order = {"im": 0, "mpim": 1, "private_channel": 2, "public_channel": 3}
+        for ch in sorted(channels, key=lambda c: (type_order.get(c["channel_type"], 9), c["name"])):
+            if errors_only and ch["migration_status"] != "failed":
                 continue
 
             style = {
@@ -492,15 +537,21 @@ def status(
                 "failed": "red",
                 "pending": "dim",
                 "extracted": "yellow",
+                "extracting": "blue",
                 "migrating_messages": "blue",
-            }.get(ch.migration_status, "")
+            }.get(ch["migration_status"], "")
+
+            if ch.get("dm_label"):
+                display = f"#{ch['channel_id']} ({ch['dm_label']})"
+            else:
+                display = f"#{ch['name']}"
 
             table.add_row(
-                f"#{ch.name}",
-                ch.channel_type,
-                str(ch.message_count or 0),
-                f"[{style}]{ch.migration_status}[/{style}]" if style else ch.migration_status,
-                ch.google_space_name or "—",
+                display,
+                ch["channel_type"],
+                str(ch["message_count"] or 0),
+                f"[{style}]{ch['migration_status']}[/{style}]" if style else ch["migration_status"],
+                ch["google_space_name"] or "—",
             )
 
         console.print(table)
@@ -591,6 +642,100 @@ def sync(
                 update_channel_status(session, ch["channel_id"], "completed", last_sync_ts=latest_ts)
 
     console.print(f"\n[green]Sync complete. {new_messages} new message(s).[/green]")
+
+
+# ─── run (extract + migrate) ─────────────────────────────────────────────────
+
+
+@app.command()
+def run(
+    config: ConfigOption = None,
+    data_dir: DataDirOption = None,
+    verbose: VerboseOption = False,
+    channels: str = typer.Option(..., help="Comma-separated channel names/IDs"),
+    skip_files: bool = typer.Option(False, help="Skip file migration"),
+    force: bool = typer.Option(False, help="Clear stale locks from crashed workers"),
+    dry_run: bool = typer.Option(False, help="Log without executing migration"),
+):
+    """Extract and migrate channels in one shot."""
+    settings = _init(config, data_dir, verbose)
+
+    if not settings.slack_bot_token:
+        console.print("[red]SLACK_BOT_TOKEN not set. Run 'noslacking setup' first.[/red]")
+        raise typer.Exit(1)
+
+    from noslacking.db.engine import get_session
+    from noslacking.db.operations import create_run, complete_run
+    from noslacking.google.chat_client import GoogleChatClient
+    from noslacking.migration.executor import MigrationExecutor
+    from noslacking.migration.file_handler import FileHandler
+    from noslacking.slack.client import SlackClient
+    from noslacking.slack.extractor import SlackExtractor
+
+    channel_filter = [c.strip() for c in channels.split(",") if c.strip()]
+    if not channel_filter:
+        console.print("[red]No channels specified.[/red]")
+        raise typer.Exit(1)
+
+    client = SlackClient(settings.slack_bot_token, settings.slack_user_token or None)
+
+    # Step 1: Extract
+    console.print("[bold blue]Step 1: Extract[/bold blue]")
+    run_id = str(uuid.uuid4())
+    extractor = SlackExtractor(client, settings, worker_id=run_id)
+
+    with get_session() as session:
+        create_run(session, run_id, "run-extract")
+
+    try:
+        extract_stats = extractor.extract_all(
+            channel_filter=channel_filter,
+            since=None,
+            skip_files=skip_files,
+            skip_threads=False,
+            resume=True,
+            force=force,
+        )
+        with get_session() as session:
+            complete_run(session, run_id, "completed", stats=extract_stats)
+    except Exception as e:
+        with get_session() as session:
+            complete_run(session, run_id, "failed", error=str(e))
+        console.print(f"[red]Extraction failed: {e}[/red]")
+        raise typer.Exit(1)
+
+    console.print(f"[green]Extracted {extract_stats['messages']} messages[/green]\n")
+
+    # Step 2: Migrate
+    console.print("[bold blue]Step 2: Migrate[/bold blue]")
+    chat = GoogleChatClient(
+        settings.service_account_key_path,
+        settings.google.admin_email,
+        messages_per_second=settings.google.messages_per_second,
+    )
+    files = FileHandler(client, chat, settings)
+    executor = MigrationExecutor(client, chat, files, settings)
+
+    run_id2 = str(uuid.uuid4())
+    with get_session() as session:
+        create_run(session, run_id2, "run-migrate")
+
+    try:
+        migrate_stats = executor.migrate_all(
+            channel_filter=channel_filter,
+            dry_run=dry_run,
+            resume=True,
+            skip_files=skip_files,
+        )
+        with get_session() as session:
+            complete_run(session, run_id2, "completed", stats=migrate_stats)
+
+        console.print(f"\n[green]Done! {migrate_stats.get('messages_migrated', 0)} messages migrated.[/green]")
+    except Exception as e:
+        with get_session() as session:
+            complete_run(session, run_id2, "failed", error=str(e))
+        console.print(f"[red]Migration failed: {e}[/red]")
+        raise typer.Exit(1)
 
 
 if __name__ == "__main__":

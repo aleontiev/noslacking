@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import signal
 import uuid
 from pathlib import Path
 
@@ -38,6 +39,24 @@ class SlackExtractor:
         self.worker_id = worker_id or str(uuid.uuid4())
         self.cache_dir = settings.cache_path
         self.cache_dir.mkdir(parents=True, exist_ok=True)
+        self._current_channel_id: str | None = None
+        self._install_signal_handlers()
+
+    def _install_signal_handlers(self) -> None:
+        """Register handlers to release channel claims on kill/interrupt."""
+        def _cleanup(signum, frame):
+            if self._current_channel_id:
+                logger.info(f"Signal {signum} received — releasing claim on {self._current_channel_id}")
+                try:
+                    with get_session() as session:
+                        update_channel_status(session, self._current_channel_id, "pending")
+                        release_channel(session, self._current_channel_id, self.worker_id)
+                except Exception:
+                    pass  # Best effort
+            raise SystemExit(1)
+
+        signal.signal(signal.SIGTERM, _cleanup)
+        signal.signal(signal.SIGINT, _cleanup)
 
     def extract_all(
         self,
@@ -47,6 +66,7 @@ class SlackExtractor:
         skip_files: bool = False,
         skip_threads: bool = False,
         resume: bool = True,
+        force: bool = False,
     ) -> dict:
         """Run full extraction. Returns summary stats."""
         stats = {"channels": 0, "messages": 0, "threads": 0, "users": 0, "files": 0}
@@ -110,14 +130,37 @@ class SlackExtractor:
                     claimed = claim_channel(session, ch.id, self.worker_id)
 
                 if not claimed:
-                    logger.info(f"Skipping #{ch.name} — claimed by another worker")
-                    progress.advance(overall)
-                    continue
+                    if force:
+                        # Force-clear the stale lock and reclaim
+                        with get_session() as session:
+                            update_channel_status(session, ch.id, "pending")
+                            release_channel(session, ch.id, self.worker_id)
+                        with get_session() as session:
+                            claimed = claim_channel(session, ch.id, self.worker_id)
+                    if not claimed:
+                        from noslacking.utils.logging import console
+                        console.print(
+                            f"  [yellow]Skipping #{ch.name} — locked by another worker. "
+                            f"If the other process is dead, re-run with --force to clear the lock.[/yellow]"
+                        )
+                        progress.advance(overall)
+                        continue
 
+                self._current_channel_id = ch.id
+                from noslacking.utils.logging import console
+                slack_url = f"https://asaak.slack.com/archives/{ch.id}"
+                console.print(f"  [dim]Slack: {slack_url}[/dim]")
+                # Show Google Chat link if already migrated previously
+                with get_session() as session:
+                    db_ch = get_channel(session, ch.id)
+                    if db_ch and db_ch.google_space_name:
+                        space_id = db_ch.google_space_name.split("/")[-1]
+                        console.print(f"  [dim]GChat: https://chat.google.com/room/{space_id}[/dim]")
                 try:
                     ch_stats = self._extract_channel(
                         ch.id, ch.name, since=since,
                         skip_files=skip_files, skip_threads=skip_threads,
+                        progress=progress,
                     )
                     stats["messages"] += ch_stats["messages"]
                     stats["threads"] += ch_stats["threads"]
@@ -129,6 +172,7 @@ class SlackExtractor:
                         release_channel(session, ch.id, self.worker_id)
                     raise
                 finally:
+                    self._current_channel_id = None
                     progress.advance(overall)
 
         return stats
@@ -167,9 +211,13 @@ class SlackExtractor:
         since: str | None = None,
         skip_files: bool = False,
         skip_threads: bool = False,
+        progress: Progress | None = None,
     ) -> dict:
         """Extract a single channel's messages, threads, members, and files."""
         stats = {"messages": 0, "threads": 0, "files": 0}
+        ch_task = None
+        if progress:
+            ch_task = progress.add_task(f"#{channel_name}", total=None)
 
         # Extract members
         self._extract_members(channel_id)
@@ -189,10 +237,15 @@ class SlackExtractor:
             if msg.is_thread_parent and not skip_threads:
                 thread_parents.append(msg.ts)
 
-            # Track files
             if not skip_files:
                 for f in msg.files:
                     stats["files"] += 1
+
+            if ch_task is not None and stats["messages"] % 50 == 0:
+                progress.update(ch_task, description=f"#{channel_name} msgs", completed=stats["messages"])
+
+        if ch_task is not None:
+            progress.update(ch_task, description=f"#{channel_name} storing", completed=stats["messages"])
 
         # Store messages in DB
         with get_session() as session:
@@ -210,7 +263,6 @@ class SlackExtractor:
                     raw_json=json.dumps(msg.raw),
                 )
 
-                # Track files
                 if not skip_files:
                     for f in msg.files:
                         upsert_file(
@@ -226,9 +278,11 @@ class SlackExtractor:
 
         # Extract thread replies
         if not skip_threads and thread_parents:
-            for thread_ts in thread_parents:
+            if ch_task is not None:
+                progress.update(ch_task, description=f"#{channel_name} threads", total=len(thread_parents), completed=0)
+
+            for i, thread_ts in enumerate(thread_parents):
                 thread_msgs = list(self.client.get_thread_replies(channel_id, thread_ts))
-                # Skip the parent (already stored)
                 replies = [m for m in thread_msgs if m.ts != thread_ts]
                 stats["threads"] += 1
 
@@ -248,7 +302,6 @@ class SlackExtractor:
                         )
                         stats["messages"] += 1
 
-                        # Track files in thread replies
                         if not skip_files:
                             for f in msg.files:
                                 upsert_file(
@@ -262,6 +315,12 @@ class SlackExtractor:
                                     slack_url_private=f.url_private_download or f.url_private,
                                 )
                                 stats["files"] += 1
+
+                if ch_task is not None:
+                    progress.update(ch_task, completed=i + 1)
+
+        if ch_task is not None:
+            progress.remove_task(ch_task)
 
         # Cache raw data
         ch_cache = self.cache_dir / "channels" / channel_id

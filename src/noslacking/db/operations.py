@@ -180,9 +180,12 @@ def upsert_message(session: Session, **kwargs) -> Message:
             if k not in ("slack_channel_id", "slack_ts"):
                 setattr(msg, k, v)
     else:
+        # Check identity map for unflushed inserts (autoflush=False)
+        for obj in session.new:
+            if isinstance(obj, Message) and obj.slack_channel_id == channel_id and obj.slack_ts == ts:
+                return obj
         msg = Message(**kwargs)
         session.add(msg)
-    session.flush()
     return msg
 
 
@@ -239,9 +242,12 @@ def upsert_file(session: Session, **kwargs) -> File:
             if k != "slack_file_id":
                 setattr(f, k, v)
     else:
+        # Check identity map for unflushed inserts (autoflush=False)
+        for obj in session.new:
+            if isinstance(obj, File) and obj.slack_file_id == file_id:
+                return obj
         f = File(**kwargs)
         session.add(f)
-    session.flush()
     return f
 
 
@@ -273,9 +279,11 @@ def upsert_membership(session: Session, **kwargs) -> Membership:
             if k not in ("slack_channel_id", "slack_user_id"):
                 setattr(mem, k, v)
     else:
+        for obj in session.new:
+            if isinstance(obj, Membership) and obj.slack_channel_id == channel_id and obj.slack_user_id == user_id:
+                return obj
         mem = Membership(**kwargs)
         session.add(mem)
-    session.flush()
     return mem
 
 

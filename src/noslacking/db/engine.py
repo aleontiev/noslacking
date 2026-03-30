@@ -38,7 +38,7 @@ def init_db(db_path: Path) -> Engine:
 
     Base.metadata.create_all(_engine)
     _migrate_schema(_engine)
-    _session_factory = sessionmaker(bind=_engine)
+    _session_factory = sessionmaker(bind=_engine, autoflush=False)
     return _engine
 
 
