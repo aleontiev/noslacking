@@ -415,6 +415,10 @@ By default, all data is stored in `~/.noslacking/`:
   logs/                # Rotating log files
 ```
 
+## Disclaimer
+
+This project is not affiliated with, endorsed by, or officially connected to Slack Technologies, Google, or Alphabet Inc. "Slack" is a registered trademark of Slack Technologies, Inc. "Google Chat" and "Google Workspace" are trademarks of Google LLC. This tool is an independent, community-driven project that interacts with their public APIs.
+
 ## 📄 License
 
 [MIT](LICENSE)
