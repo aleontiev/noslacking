@@ -8,7 +8,7 @@
 
 ---
 
-[💡 Why?](#-why) · [✨ Features](#-features) · [📋 Prerequisites](#-prerequisites) · [📦 Installation](#-installation) · [🚀 Quick Start](#-quick-start) · [🛠 Commands](#-commands) · [⚙️ Configuration](#️-configuration) · [🔍 How It Works](#-how-it-works) · [📄 License](#-license)
+[💡 Why?](#-why) · [✨ Features](#-features) · [📋 Prerequisites](#-prerequisites) · [🚀 Quick Start](#-quick-start) · [🛠 Commands](#-commands) · [⚙️ Configuration](#️-configuration) · [🔍 How It Works](#-how-it-works) · [📄 License](#-license)
 
 ---
 
@@ -153,23 +153,14 @@ Optionally, generate a **User OAuth Token** (`xoxp-...`) for broader access to p
 
    </details>
 
-## 📦 Installation
-
-```bash
-# Clone the repository
-git clone https://github.com/YOUR_ORG/noslacking.git
-cd noslacking
-
-# Install with uv (recommended)
-uv sync
-
-# Or install with pip
-pip install -e .
-```
-
 ## 🚀 Quick Start
 
 ```bash
+# Install
+git clone https://github.com/aleontiev/noslacking.git
+cd noslacking
+uv sync    # or: pip install -e .
+
 # 1. Interactive setup — walks you through Slack + Google configuration
 uv run noslacking setup
 
