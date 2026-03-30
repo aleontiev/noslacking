@@ -6,6 +6,12 @@
 
 <p align="center"><strong>Migrate your Slack workspace to Google Chat — fully, faithfully, and for free.</strong></p>
 
+---
+
+[💡 Why?](#-why) · [✨ Features](#-features) · [📋 Prerequisites](#-prerequisites) · [📦 Installation](#-installation) · [🚀 Quick Start](#-quick-start) · [🛠 Commands](#-commands) · [⚙️ Configuration](#️-configuration) · [🔍 How It Works](#-how-it-works) · [📁 Data Directory](#-data-directory) · [👩‍💻 Development](#-development) · [📄 License](#-license)
+
+---
+
 No Slack export files needed. Reads directly from the Slack API, transforms messages/threads/files/reactions, and writes them into Google Chat using [import mode](https://developers.google.com/workspace/chat/import-data-overview) so that original timestamps and authors are preserved.
 
 ```
@@ -26,7 +32,7 @@ $ noslacking migrate
   └────────────────────┴───────┘
 ```
 
-## Why?
+## 💡 Why?
 
 At [Asaak](https://asaak.com), we were paying almost as much for Slack as for the rest of our productivity suite (Google Workspace). Slack is great and it feels great... but that made us stop and think; are the vibes worth it?
 
@@ -46,31 +52,31 @@ We open-sourced it because no company should have to pay extra just to access th
 
 |  | Slack Export | noslacking |
 |--|-------------|------------|
-| Public channels | All plans | All plans |
-| Private channels & DMs | Business+ / Enterprise only | Any plan with API tokens |
-| Original timestamps | Flat JSON files | Restored in Google Chat |
-| Message authorship | Metadata only | Messages appear as original sender |
-| Files & reactions | Separate download step | Migrated automatically |
-| Threads | Flattened | Preserved as threads |
-| Automation | Manual request + wait | One command |
-| Cost | May require plan upgrade | Free & open source |
+| Public channels | All plans | :white_check_mark: All plans |
+| Private channels & DMs | Business+ / Enterprise only | :white_check_mark: Any plan |
+| Original timestamps | Flat JSON files | :white_check_mark: Restored in Chat |
+| Message authorship | Metadata only | :white_check_mark: Original sender |
+| Files & reactions | Separate download | :white_check_mark: Automatic |
+| Threads | Flattened | :white_check_mark: Preserved |
+| Automation | Manual request + wait | :white_check_mark: One command |
+| Cost | May require plan upgrade | :white_check_mark: Free & open source |
 
-## Features
+## ✨ Features
 
-- **API-only** — no Slack export zip required; reads directly from the Slack API
-- **DMs and group DMs** — migrates private messages and group conversations, not just channels (Slack's own export requires Business+ or Enterprise for this; noslacking uses the API so any plan with the right token scopes works)
-- **Preserves history** — messages appear with original timestamps and authors via Google Chat import mode
-- **Threads** — thread replies are migrated as threaded messages in Google Chat
-- **Files** — attachments are downloaded from Slack and uploaded to Google Drive (or Chat)
-- **Reactions** — emoji reactions are re-created per user where supported
-- **User mapping** — automatically maps Slack users to Google Workspace users by email
-- **Resumable** — all progress is tracked in a local SQLite database; safe to interrupt and resume
-- **Multi-process** — run multiple extractions or migrations in parallel to speed up large workspaces
-- **Incremental sync** — after initial migration, sync new messages going forward
-- **Dry-run mode** — preview what would happen without writing to Google Chat
-- **Channel filtering** — migrate all channels or a specific subset
+- **API-only** — reads directly from Slack's API, no export needed
+- **DMs and group DMs** — migrates private conversations on any plan
+- **Preserves history** — original timestamps and authors in Google Chat
+- **Threads** — replies stay threaded
+- **Files** — downloaded from Slack, uploaded to Google Drive or Chat
+- **Reactions** — re-created per user where supported
+- **User mapping** — matches Slack to Google Workspace users by email
+- **Resumable** — SQLite state tracking; safe to interrupt and resume
+- **Multi-process** — run parallel extractions/migrations for speed
+- **Incremental sync** — sync new messages after initial migration
+- **Dry-run mode** — preview without writing to Google Chat
+- **Channel filtering** — migrate all channels or a subset
 
-## Prerequisites
+## 📋 Prerequisites
 
 ### Python
 
@@ -114,7 +120,7 @@ Optionally, generate a **User OAuth Token** (`xoxp-...`) for broader access to p
    - `https://www.googleapis.com/auth/admin.directory.user.readonly`
    - `https://www.googleapis.com/auth/drive.file` (if using Drive uploads)
 
-## Installation
+## 📦 Installation
 
 ```bash
 # Clone the repository
@@ -128,7 +134,7 @@ uv sync
 pip install -e .
 ```
 
-## Quick Start
+## 🚀 Quick Start
 
 ```bash
 # 1. Interactive setup — walks you through Slack + Google configuration
@@ -150,7 +156,7 @@ uv run noslacking migrate
 uv run noslacking status
 ```
 
-## Commands
+## 🛠 Commands
 
 ### `setup`
 
@@ -232,7 +238,7 @@ uv run noslacking sync --channels general
 uv run noslacking sync --dry-run
 ```
 
-## Configuration
+## ⚙️ Configuration
 
 The `setup` command generates a `config.yaml` file. You can also create one manually using [`config.example.yaml`](config.example.yaml) as a template.
 
@@ -265,7 +271,7 @@ See [`config.example.yaml`](config.example.yaml) for all options. Key settings:
 | `migration` | `space_name_template` | `[Slack] {name}` | Google Chat space display name |
 | `migration` | `dry_run` | `false` | Default dry-run setting |
 
-## How It Works
+## 🔍 How It Works
 
 ### Migration Flow
 
@@ -330,7 +336,7 @@ All state is tracked in `~/.noslacking/migration.db` (SQLite). If the process is
 
 Messages are posted as the original author using Google Workspace domain-wide delegation. If a Slack user has no matching Google account, the message is posted by the admin account with an attribution line (e.g., `*John Doe:* original message`).
 
-## Data Directory
+## 📁 Data Directory
 
 By default, all data is stored in `~/.noslacking/`:
 
@@ -347,7 +353,7 @@ By default, all data is stored in `~/.noslacking/`:
   logs/                # Rotating log files
 ```
 
-## Development
+## 👩‍💻 Development
 
 ```bash
 # Install with dev dependencies
@@ -363,7 +369,7 @@ uv run mypy src/
 uv run pytest
 ```
 
-## License
+## 📄 License
 
 [MIT](LICENSE)
 
