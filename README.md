@@ -11,12 +11,15 @@
 No Slack export files needed. Reads directly from the Slack API, transforms messages/threads/files/reactions, and writes them into Google Chat using [import mode](https://developers.google.com/workspace/chat/import-data-overview) so that original timestamps and authors are preserved.
 
 ---
-[💡 Why?](#-why)
-[✨ Features](#-features)
-[📋 Prerequisites](#-prerequisites)
-[🚀 Quick Start](#-quick-start)
-[🛠 Commands](#-commands)
-[⚙️ Configuration](#️-configuration) [🔍 How It Works](#-how-it-works)
+
+- [💡 Why?](#-why)
+- [✨ Features](#-features)
+- [📋 Prerequisites](#-prerequisites)
+- [🚀 Quick Start](#-quick-start)
+- [🛠 Commands](#-commands)
+- [⚙️ Configuration](#️-configuration)
+- [🔍 How It Works](#-how-it-works)
+
 ---
 
 ## 💡 Why?
