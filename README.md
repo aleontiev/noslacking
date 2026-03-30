@@ -4,12 +4,11 @@
 
 <h1 align="center">noslacking</h1>
 
-<p align="center"><strong>Migrate your Slack workspace to Google Chat — fully, faithfully, and for free.</strong></p>
+<p align="center"><strong>Migrate your Slack workspace to Google Chat, ez</strong></p>
 
 ---
 
-[💡 Why?](#-why) · [✨ Features](#-features) · [📋 Prerequisites](#-prerequisites) · [🚀 Quick Start](#-quick-start) · [🛠 Commands](#-commands) · [⚙️ Configuration](#️-configuration) · [🔍 How It Works](#-how-it-works) · [📄 License](#-license)
-
+[💡 Why?](#-why) · [✨ Features](#-features) · [📋 Prerequisites](#-prerequisites) · [🚀 Quick Start](#-quick-start) · [🛠 Commands](#-commands) · [⚙️ Configuration](#️-configuration) · [🔍 How It Works](#-how-it-works)
 ---
 
 No Slack export files needed. Reads directly from the Slack API, transforms messages/threads/files/reactions, and writes them into Google Chat using [import mode](https://developers.google.com/workspace/chat/import-data-overview) so that original timestamps and authors are preserved.
@@ -30,19 +29,6 @@ So we built `noslacking`: a free, open-source migration tool that:
 
 We open-sourced it because no company should have to pay extra just to access their own data.
 
-### noslacking vs. Slack Export
-
-|  | Slack Export | noslacking |
-|--|-------------|------------|
-| Public channels | All plans | :white_check_mark: All plans |
-| Private channels & DMs | Business+ / Enterprise only | :white_check_mark: Any plan |
-| Original timestamps | Flat JSON files | :white_check_mark: Restored in Chat |
-| Message authorship | Metadata only | :white_check_mark: Original sender |
-| Files & reactions | Separate download | :white_check_mark: Automatic |
-| Threads | Flattened | :white_check_mark: Preserved |
-| Automation | Manual request + wait | :white_check_mark: One command |
-| Cost | May require plan upgrade | :white_check_mark: Free & open source |
-
 ## ✨ Features
 
 - **API-only** — reads directly from Slack's API, no export needed
@@ -57,6 +43,19 @@ We open-sourced it because no company should have to pay extra just to access th
 - **Incremental sync** — sync new messages after initial migration
 - **Dry-run mode** — preview without writing to Google Chat
 - **Channel filtering** — migrate all channels or a subset
+
+### noslacking vs. Slack Export
+
+|  | Slack Export | noslacking |
+|--|-------------|------------|
+| Public channels | All plans | :white_check_mark: All plans |
+| Private channels & DMs | Business+ / Enterprise only | :white_check_mark: Any plan |
+| Original timestamps | Flat JSON files | :white_check_mark: Restored in Chat |
+| Message authorship | Metadata only | :white_check_mark: Original sender |
+| Files & reactions | Separate download | :white_check_mark: Automatic |
+| Threads | Flattened | :white_check_mark: Preserved |
+| Automation | Manual request + wait | :white_check_mark: One command |
+| Cost | May require plan upgrade | :white_check_mark: Free & open source |
 
 ## 📋 Prerequisites
 
