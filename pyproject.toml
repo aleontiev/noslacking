@@ -16,12 +16,6 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
     "Topic :: Communications :: Chat",
 ]
-
-[project.urls]
-Homepage = "https://github.com/YOUR_ORG/noslacking"
-Repository = "https://github.com/YOUR_ORG/noslacking"
-Issues = "https://github.com/YOUR_ORG/noslacking/issues"
-
 dependencies = [
     "typer>=0.14.0",
     "rich>=13.9.0",
@@ -38,6 +32,11 @@ dependencies = [
     "arrow>=1.3.0",
 ]
 
+[project.urls]
+Homepage = "https://github.com/aleontiev/noslacking"
+Repository = "https://github.com/aleontiev/noslacking"
+Issues = "https://github.com/aleontiev/noslacking/issues"
+
 [project.optional-dependencies]
 dev = [
     "pytest>=8.3.0",
@@ -48,6 +47,7 @@ dev = [
 
 [project.scripts]
 noslacking = "noslacking.cli:app"
+slack-to-chat = "noslacking.cli:app"
 
 [build-system]
 requires = ["hatchling"]

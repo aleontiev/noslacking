@@ -28,11 +28,13 @@ $ noslacking migrate
 
 ## Why?
 
-We were paying almost as much for Slack as for the rest of our productivity suite (Google Workspace). When Google added threaded messages to Chat last year, it signaled a real commitment to making Chat a first-class collaboration tool — so we decided to make the switch.
+At [Asaak](https://asaak.com), we were paying almost as much for Slack as for the rest of our productivity suite (Google Workspace). Slack is great and it feels great... but that made us stop and think; are the vibes worth it?
 
-The problem: Slack makes it surprisingly hard to leave. Even on a paid plan with unlimited data retention, exporting your full history — including DMs and private channels — requires a Business+ or Enterprise tier, and even then it's a manual, clunky process. Slack's data export is designed to keep you locked in, not to help you move on.
+We already use Google Workspace, which has Chat... a product that didn't get much love in the past. But recently... Google added threaded messages and many other UX improvements and features to Chat. It signaled a real commitment to making Chat a first-class collaboration tool — so we decided to make the switch.
 
-So we built noslacking: a free, open-source migration tool that:
+The problem: Slack makes it surprisingly hard to leave. Even on a paid plan with unlimited data retention, exporting your full history — including DMs and private channels — requires a Business+ or Enterprise tier, and even then it's a manual, clunky process. Slack's data export is designed to keep you locked in, not to help you move on. Just when we are trying to save on costs, we are asked to upgrade before we can see a majority of the "unlimited data" we have been paying for.
+
+So we built `noslacking`: a free, open-source migration tool that:
 
 - **Extracts everything automatically** using Slack's official API — no manual exports, no tier upgrades
 - **Restores messages faithfully** in Google Chat — each message appears as the original author with its original timestamp, files, and reactions intact
@@ -358,3 +360,6 @@ uv run pytest
 ## License
 
 [MIT](LICENSE)
+
+---
+
