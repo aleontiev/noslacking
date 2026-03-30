@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import uuid
 from pathlib import Path
 
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
@@ -11,7 +12,9 @@ from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskPr
 from noslacking.config import Settings
 from noslacking.db.engine import get_session
 from noslacking.db.operations import (
+    claim_channel,
     now_utc,
+    release_channel,
     upsert_channel,
     upsert_file,
     upsert_membership,
@@ -29,15 +32,17 @@ logger = logging.getLogger(__name__)
 class SlackExtractor:
     """Orchestrates extraction of all Slack data into local cache + SQLite."""
 
-    def __init__(self, client: SlackClient, settings: Settings):
+    def __init__(self, client: SlackClient, settings: Settings, worker_id: str | None = None):
         self.client = client
         self.settings = settings
+        self.worker_id = worker_id or str(uuid.uuid4())
         self.cache_dir = settings.cache_path
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
     def extract_all(
         self,
         channel_filter: list[str] | None = None,
+        channel_types: list[str] | None = None,
         since: str | None = None,
         skip_files: bool = False,
         skip_threads: bool = False,
@@ -50,8 +55,9 @@ class SlackExtractor:
         stats["users"] = self._extract_users()
 
         # List and filter channels
+        types_to_list = channel_types or self.settings.slack.channel_types
         channels = list(self.client.list_channels(
-            types=self.settings.slack.channel_types,
+            types=types_to_list,
             exclude_archived=not self.settings.slack.include_archived,
         ))
 
@@ -99,14 +105,31 @@ class SlackExtractor:
                             progress.advance(overall)
                             continue
 
-                ch_stats = self._extract_channel(
-                    ch.id, ch.name, since=since,
-                    skip_files=skip_files, skip_threads=skip_threads,
-                )
-                stats["messages"] += ch_stats["messages"]
-                stats["threads"] += ch_stats["threads"]
-                stats["files"] += ch_stats["files"]
-                progress.advance(overall)
+                # Try to claim the channel (atomic — safe with parallel workers)
+                with get_session() as session:
+                    claimed = claim_channel(session, ch.id, self.worker_id)
+
+                if not claimed:
+                    logger.info(f"Skipping #{ch.name} — claimed by another worker")
+                    progress.advance(overall)
+                    continue
+
+                try:
+                    ch_stats = self._extract_channel(
+                        ch.id, ch.name, since=since,
+                        skip_files=skip_files, skip_threads=skip_threads,
+                    )
+                    stats["messages"] += ch_stats["messages"]
+                    stats["threads"] += ch_stats["threads"]
+                    stats["files"] += ch_stats["files"]
+                except Exception:
+                    # On failure, release claim so another worker can retry
+                    with get_session() as session:
+                        update_channel_status(session, ch.id, "pending")
+                        release_channel(session, ch.id, self.worker_id)
+                    raise
+                finally:
+                    progress.advance(overall)
 
         return stats
 
@@ -147,9 +170,6 @@ class SlackExtractor:
     ) -> dict:
         """Extract a single channel's messages, threads, members, and files."""
         stats = {"messages": 0, "threads": 0, "files": 0}
-
-        with get_session() as session:
-            update_channel_status(session, channel_id, "extracting")
 
         # Extract members
         self._extract_members(channel_id)
@@ -249,13 +269,14 @@ class SlackExtractor:
         with open(ch_cache / "messages.json", "w") as f:
             json.dump([m.raw for m in messages], f)
 
-        # Mark extracted
+        # Mark extracted and release claim
         with get_session() as session:
             update_channel_status(
                 session, channel_id, "extracted",
                 extracted_at=now_utc(),
                 message_count=stats["messages"],
             )
+            release_channel(session, channel_id, self.worker_id)
 
         logger.info(
             f"#{channel_name}: {stats['messages']} messages, "

@@ -166,12 +166,17 @@ def extract(
     data_dir: DataDirOption = None,
     verbose: VerboseOption = False,
     channels: str = typer.Option("", help="Comma-separated channel names to extract"),
+    channel_types: str = typer.Option("", help="Comma-separated types: public_channel,private_channel,im,mpim"),
     since: str = typer.Option("", help="Only messages newer than this (ISO 8601)"),
     skip_files: bool = typer.Option(False, help="Skip file metadata extraction"),
     skip_threads: bool = typer.Option(False, help="Skip thread replies"),
     resume: bool = typer.Option(True, help="Resume from last position"),
 ):
-    """Extract all Slack data via API into local cache."""
+    """Extract all Slack data via API into local cache.
+
+    Supports parallel execution — run multiple processes with different --channel-types
+    to extract DMs and public channels simultaneously.
+    """
     settings = _init(config, data_dir, verbose)
 
     if not settings.slack_bot_token:
@@ -182,11 +187,13 @@ def extract(
     from noslacking.slack.extractor import SlackExtractor
 
     client = SlackClient(settings.slack_bot_token, settings.slack_user_token or None)
-    extractor = SlackExtractor(client, settings)
-
-    channel_filter = [c.strip() for c in channels.split(",") if c.strip()] or None
 
     run_id = str(uuid.uuid4())
+    extractor = SlackExtractor(client, settings, worker_id=run_id)
+
+    channel_filter = [c.strip() for c in channels.split(",") if c.strip()] or None
+    type_filter = [t.strip() for t in channel_types.split(",") if t.strip()] or None
+
     from noslacking.db.engine import get_session
     from noslacking.db.operations import create_run, complete_run
 
@@ -196,6 +203,7 @@ def extract(
     try:
         stats = extractor.extract_all(
             channel_filter=channel_filter,
+            channel_types=type_filter,
             since=since or None,
             skip_files=skip_files,
             skip_threads=skip_threads,

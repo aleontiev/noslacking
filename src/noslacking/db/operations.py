@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.orm import Session
 
 from noslacking.db.models import (
@@ -84,6 +84,48 @@ def update_channel_status(session: Session, channel_id: str, status: str, **kwar
         channel.migration_status = status
         for k, v in kwargs.items():
             setattr(channel, k, v)
+
+
+# --- Channel Claims (parallel extraction) ---
+
+
+def claim_channel(
+    session: Session,
+    channel_id: str,
+    worker_id: str,
+    stale_timeout_minutes: int = 30,
+) -> bool:
+    """Atomically claim a channel for extraction. Returns True if claimed."""
+    stale_cutoff = now_utc() - timedelta(minutes=stale_timeout_minutes)
+
+    result = session.execute(
+        update(Channel)
+        .where(
+            Channel.slack_channel_id == channel_id,
+            or_(
+                Channel.migration_status == "pending",
+                and_(
+                    Channel.migration_status == "extracting",
+                    Channel.extract_claimed_at < stale_cutoff,
+                ),
+            ),
+        )
+        .values(
+            migration_status="extracting",
+            extract_worker_id=worker_id,
+            extract_claimed_at=now_utc(),
+        )
+    )
+    session.flush()
+    return result.rowcount > 0
+
+
+def release_channel(session: Session, channel_id: str, worker_id: str) -> None:
+    """Release a channel claim after extraction completes or fails."""
+    channel = session.get(Channel, channel_id)
+    if channel and channel.extract_worker_id == worker_id:
+        channel.extract_worker_id = None
+        channel.extract_claimed_at = None
 
 
 # --- Users ---

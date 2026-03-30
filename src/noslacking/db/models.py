@@ -45,6 +45,10 @@ class Channel(Base):
     google_space_created_at: Mapped[datetime | None] = mapped_column(DateTime)
     import_completed_at: Mapped[datetime | None] = mapped_column(DateTime)
 
+    # Parallel extraction claim
+    extract_worker_id: Mapped[str | None] = mapped_column(String(36))
+    extract_claimed_at: Mapped[datetime | None] = mapped_column(DateTime)
+
     # Overall status
     migration_status: Mapped[str] = mapped_column(
         String(30), nullable=False, default="pending"

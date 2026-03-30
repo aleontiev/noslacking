@@ -65,6 +65,7 @@ We open-sourced it because no company should have to pay extra just to access th
 - **Reactions** — emoji reactions are re-created per user where supported
 - **User mapping** — automatically maps Slack users to Google Workspace users by email
 - **Resumable** — all progress is tracked in a local SQLite database; safe to interrupt and resume
+- **Multi-process** — run multiple extractions or migrations in parallel to speed up large workspaces
 - **Incremental sync** — after initial migration, sync new messages going forward
 - **Dry-run mode** — preview what would happen without writing to Google Chat
 - **Channel filtering** — migrate all channels or a specific subset
@@ -171,6 +172,11 @@ uv run noslacking extract --channels general,engineering
 uv run noslacking extract --since 2024-01-01T00:00:00Z
 uv run noslacking extract --skip-threads --skip-files
 uv run noslacking extract --no-resume    # Re-extract everything
+
+# Run multiple extractions in parallel (safe — each process works on different channels)
+uv run noslacking extract --channels general,engineering,product &
+uv run noslacking extract --channels support,sales,marketing &
+wait
 ```
 
 ### `map-users`
