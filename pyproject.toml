@@ -17,6 +17,11 @@ classifiers = [
     "Topic :: Communications :: Chat",
 ]
 
+[project.urls]
+Homepage = "https://github.com/YOUR_ORG/noslacking"
+Repository = "https://github.com/YOUR_ORG/noslacking"
+Issues = "https://github.com/YOUR_ORG/noslacking/issues"
+
 dependencies = [
     "typer>=0.14.0",
     "rich>=13.9.0",

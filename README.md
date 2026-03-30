@@ -1,12 +1,62 @@
-# noslacking
+<p align="center">
+  <img src="assets/logo.svg" alt="noslacking logo" width="120">
+</p>
 
-CLI tool to migrate a Slack workspace to Google Chat using APIs directly — no Slack export files needed.
+<h1 align="center">noslacking</h1>
 
-Reads your Slack workspace via the Slack API, transforms messages/threads/files/reactions, and writes them into Google Chat using [import mode](https://developers.google.com/workspace/chat/import-data-overview) so that original timestamps and authors are preserved.
+<p align="center"><strong>Migrate your Slack workspace to Google Chat — fully, faithfully, and for free.</strong></p>
+
+No Slack export files needed. Reads directly from the Slack API, transforms messages/threads/files/reactions, and writes them into Google Chat using [import mode](https://developers.google.com/workspace/chat/import-data-overview) so that original timestamps and authors are preserved.
+
+```
+$ noslacking migrate
+
+  Migrating 47 channels...
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 100% 47/47
+
+       Migration Summary
+  ┌────────────────────┬───────┐
+  │ Metric             │ Count │
+  ├────────────────────┼───────┤
+  │ Channels Created   │    47 │
+  │ Channels Completed │    47 │
+  │ Messages Migrated  │ 84291 │
+  │ Members Added      │   312 │
+  │ Files Uploaded     │  1038 │
+  └────────────────────┴───────┘
+```
+
+## Why?
+
+We were paying almost as much for Slack as for the rest of our productivity suite (Google Workspace). When Google added threaded messages to Chat last year, it signaled a real commitment to making Chat a first-class collaboration tool — so we decided to make the switch.
+
+The problem: Slack makes it surprisingly hard to leave. Even on a paid plan with unlimited data retention, exporting your full history — including DMs and private channels — requires a Business+ or Enterprise tier, and even then it's a manual, clunky process. Slack's data export is designed to keep you locked in, not to help you move on.
+
+So we built noslacking: a free, open-source migration tool that:
+
+- **Extracts everything automatically** using Slack's official API — no manual exports, no tier upgrades
+- **Restores messages faithfully** in Google Chat — each message appears as the original author with its original timestamp, files, and reactions intact
+- **Handles DMs and private groups** — the conversations Slack makes hardest to export are fully supported
+
+We open-sourced it because no company should have to pay extra just to access their own data.
+
+### noslacking vs. Slack Export
+
+|  | Slack Export | noslacking |
+|--|-------------|------------|
+| Public channels | All plans | All plans |
+| Private channels & DMs | Business+ / Enterprise only | Any plan with API tokens |
+| Original timestamps | Flat JSON files | Restored in Google Chat |
+| Message authorship | Metadata only | Messages appear as original sender |
+| Files & reactions | Separate download step | Migrated automatically |
+| Threads | Flattened | Preserved as threads |
+| Automation | Manual request + wait | One command |
+| Cost | May require plan upgrade | Free & open source |
 
 ## Features
 
 - **API-only** — no Slack export zip required; reads directly from the Slack API
+- **DMs and group DMs** — migrates private messages and group conversations, not just channels (Slack's own export requires Business+ or Enterprise for this; noslacking uses the API so any plan with the right token scopes works)
 - **Preserves history** — messages appear with original timestamps and authors via Google Chat import mode
 - **Threads** — thread replies are migrated as threaded messages in Google Chat
 - **Files** — attachments are downloaded from Slack and uploaded to Google Drive (or Chat)
@@ -211,6 +261,20 @@ See [`config.example.yaml`](config.example.yaml) for all options. Key settings:
 
 ### Migration Flow
 
+```mermaid
+flowchart LR
+    A["<b>Slack API</b><br/>channels, users,<br/>messages, files"] -->|extract| B["<b>Local Cache</b><br/>SQLite + JSON"]
+    B -->|map-users| C["<b>User Mapping</b><br/>Slack → Google<br/>by email"]
+    C -->|migrate| D["<b>Google Chat</b><br/>import mode spaces"]
+    D -->|"complete<br/>import"| E["<b>Live Spaces</b><br/>visible to users"]
+
+    style A fill:#4A154B,color:#fff
+    style B fill:#1a73e8,color:#fff
+    style C fill:#1a73e8,color:#fff
+    style D fill:#0d652d,color:#fff
+    style E fill:#0d652d,color:#fff
+```
+
 1. **Extract** — reads all channels, users, messages, threads, and file metadata from Slack via API and stores them in a local SQLite database
 2. **Map users** — matches Slack users to Google Workspace accounts by email address
 3. **Create spaces** — creates Google Chat spaces in [import mode](https://developers.google.com/workspace/chat/import-data-overview), which allows setting historical `createTime` on messages
@@ -219,6 +283,36 @@ See [`config.example.yaml`](config.example.yaml) for all options. Key settings:
 6. **Add reactions** — re-creates emoji reactions per user
 7. **Complete import** — calls `completeImport` to end import mode and make the space visible
 8. **Add members** — adds channel members to the Google Chat space as active members
+
+### Status Tracking
+
+```
+$ noslacking status --detail
+
+       Migration Status
+  ┌──────────────────┬───────┐
+  │ Metric           │ Value │
+  ├──────────────────┼───────┤
+  │ Total Channels   │    47 │
+  │   completed      │    44 │
+  │   migrating      │     2 │
+  │   pending        │     1 │
+  │ Total Users      │    86 │
+  │   Mapped         │    81 │
+  │ Messages (done)  │ 79104 │
+  │ Messages (pend)  │  5187 │
+  └──────────────────┴───────┘
+
+            Channel Details
+  ┌──────────────┬─────────┬──────┬───────────┐
+  │ Channel      │ Type    │ Msgs │ Status    │
+  ├──────────────┼─────────┼──────┼───────────┤
+  │ #general     │ public  │ 8291 │ completed │
+  │ #engineering │ public  │ 4102 │ completed │
+  │ #random      │ public  │ 3847 │ migrating │
+  │ ...          │         │      │           │
+  └──────────────┴─────────┴──────┴───────────┘
+```
 
 ### Resumability
 

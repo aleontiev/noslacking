@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <defs>
+    <clipPath id="circle-clip">
+      <circle cx="100" cy="100" r="84"/>
+    </clipPath>
+  </defs>
+
+  <!-- Circle -->
+  <circle cx="100" cy="100" r="90" fill="none" stroke="#E01E5A" stroke-width="12"/>
+
+  <!-- Hash mark (#) clipped to circle interior -->
+  <g clip-path="url(#circle-clip)">
+    <!-- Vertical bars -->
+    <rect x="73" y="40" width="12" height="120" rx="6" fill="#4A154B" transform="rotate(-8, 79, 100)"/>
+    <rect x="115" y="40" width="12" height="120" rx="6" fill="#4A154B" transform="rotate(-8, 121, 100)"/>
+    <!-- Horizontal bars -->
+    <rect x="40" y="73" width="120" height="12" rx="6" fill="#4A154B" transform="rotate(-8, 100, 79)"/>
+    <rect x="40" y="115" width="120" height="12" rx="6" fill="#4A154B" transform="rotate(-8, 100, 121)"/>
+  </g>
+
+  <!-- Diagonal slash -->
+  <line x1="27" y1="173" x2="173" y2="27" stroke="#E01E5A" stroke-width="14" stroke-linecap="round"/>
+</svg>
