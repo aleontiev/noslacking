@@ -110,8 +110,13 @@ class SlackClient:
         oldest: str | None = None, latest: str | None = None,
         cursor: str | None = None,
     ) -> Generator[SlackMessage, None, None]:
-        """Yield all messages in a channel. Uses user token for private channel access."""
+        """Yield all messages in a channel. Uses user token for private channel access.
+
+        If the primary token returns 0 messages on the first page and an alternate
+        token is available, retries with the alternate token.
+        """
         client = self._primary
+        first_page = True
 
         while True:
             kwargs: dict = {"channel": channel_id, "limit": limit}
@@ -125,17 +130,31 @@ class SlackClient:
             try:
                 resp = client.conversations_history(**kwargs)
             except SlackApiError as e:
-                # Fall back to bot if user token can't access this channel
-                if self.user and client is self.user and e.response.get("error") in (
+                # Fall back to other token if this one can't access the channel
+                alt = self.bot if (self.user and client is self.user) else (self.user if client is self.bot else None)
+                if alt and e.response.get("error") in (
                     "missing_scope", "not_in_channel", "channel_not_found",
                 ):
-                    logger.debug(f"User token failed for history, falling back to bot")
-                    client = self.bot
+                    logger.debug(f"Token failed for history ({e.response['error']}), trying alternate")
+                    client = alt
                     continue
                 logger.error(f"Error fetching history for {channel_id}: {e.response['error']}")
                 raise
 
-            for msg in resp.get("messages", []):
+            messages = resp.get("messages", [])
+
+            # If first page returns 0 messages, try the alternate token
+            if first_page and not messages:
+                alt = self.bot if (self.user and client is self.user) else (self.user if client is self.bot else None)
+                if alt:
+                    logger.debug(f"Primary token returned 0 messages for {channel_id}, trying alternate")
+                    client = alt
+                    first_page = False
+                    continue
+
+            first_page = False
+
+            for msg in messages:
                 yield SlackMessage.from_api(msg)
 
             cursor = resp.get("response_metadata", {}).get("next_cursor")
@@ -148,6 +167,7 @@ class SlackClient:
         """Yield all replies in a thread (including parent)."""
         cursor = None
         client = self._primary
+        first_page = True
 
         while True:
             try:
@@ -155,16 +175,29 @@ class SlackClient:
                     channel=channel_id, ts=thread_ts, limit=200, cursor=cursor,
                 )
             except SlackApiError as e:
-                if self.user and client is self.user and e.response.get("error") in (
+                alt = self.bot if (self.user and client is self.user) else (self.user if client is self.bot else None)
+                if alt and e.response.get("error") in (
                     "missing_scope", "not_in_channel", "channel_not_found",
                 ):
-                    logger.debug(f"User token failed for thread, falling back to bot")
-                    client = self.bot
+                    logger.debug(f"Token failed for thread, trying alternate")
+                    client = alt
                     continue
                 logger.error(f"Error fetching thread {thread_ts}: {e.response['error']}")
                 raise
 
-            for msg in resp.get("messages", []):
+            messages = resp.get("messages", [])
+
+            if first_page and not messages:
+                alt = self.bot if (self.user and client is self.user) else (self.user if client is self.bot else None)
+                if alt:
+                    logger.debug(f"Primary token returned 0 thread replies for {thread_ts}, trying alternate")
+                    client = alt
+                    first_page = False
+                    continue
+
+            first_page = False
+
+            for msg in messages:
                 yield SlackMessage.from_api(msg)
 
             cursor = resp.get("response_metadata", {}).get("next_cursor")
