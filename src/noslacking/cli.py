@@ -568,6 +568,7 @@ def sync(
     channels: str = typer.Option("", help="Comma-separated channel names"),
     since: str = typer.Option("", help="Override sync start time (ISO 8601)"),
     dry_run: bool = typer.Option(False, help="Log without executing"),
+    admin_email: str = typer.Option("", "--admin-email", help="Override admin email for impersonation"),
 ):
     """Incremental sync — fetch new messages since last migration."""
     settings = _init(config, data_dir, verbose)
@@ -575,15 +576,17 @@ def sync(
     from noslacking.db.engine import get_session
     from noslacking.db.operations import get_channels, upsert_message, now_utc, update_channel_status
     from noslacking.google.chat_client import GoogleChatClient
-    from noslacking.migration.message_transform import transform_message_text, slack_ts_to_datetime
+    from noslacking.migration.message_transform import transform_message_text, slack_ts_to_datetime, build_attribution_text
     from noslacking.slack.client import SlackClient
     from noslacking.db.models import User
     import json
 
+    effective_admin = admin_email or settings.google.admin_email
+
     slack = SlackClient(settings.slack_bot_token, settings.slack_user_token or None)
     chat = GoogleChatClient(
         settings.service_account_key_path,
-        settings.google.admin_email,
+        effective_admin,
         messages_per_second=settings.google.messages_per_second,
     )
 
@@ -625,7 +628,7 @@ def sync(
             with get_session() as session:
                 text = transform_message_text(msg.raw.get("text", ""), session)
                 user = session.get(User, msg.user) if msg.user else None
-                impersonate = user.google_email if user and user.google_email else settings.google.admin_email
+                impersonate = user.google_email if user and user.google_email else effective_admin
 
             try:
                 chat.create_message(
@@ -634,7 +637,26 @@ def sync(
                     impersonate_email=impersonate,
                 )
             except Exception as e:
-                console.print(f"  [red]Failed: {e}[/red]")
+                # Fallback: if impersonation fails, retry as admin with attribution
+                if impersonate and impersonate != effective_admin:
+                    user_name = ""
+                    if user:
+                        user_name = user.slack_real_name or user.slack_display_name or msg.user or ""
+                    fallback_text = text or "(empty message)"
+                    if user_name:
+                        fallback_text = build_attribution_text(
+                            fallback_text, user_name, slack_ts_to_datetime(msg.ts),
+                        )
+                    try:
+                        chat.create_message(
+                            space_name=ch["space_name"],
+                            text=fallback_text,
+                            impersonate_email=effective_admin,
+                        )
+                    except Exception as e:
+                        console.print(f"  [red]Failed (admin fallback): {e}[/red]")
+                else:
+                    console.print(f"  [red]Failed: {e}[/red]")
 
         # Update sync timestamp
         if not dry_run and latest_ts != oldest:

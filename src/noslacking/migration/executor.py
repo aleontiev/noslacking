@@ -233,11 +233,11 @@ class MigrationExecutor:
                 space_name = f"spaces/DRY_RUN_{channel.slack_channel_id}"
             else:
                 console.print(f"  [cyan]Creating import space:[/cyan] {display_name}")
-                # Set createTime to an old date so historical memberships work
+                # Set createTime to an old date so historical messages/memberships work
                 result = self.chat.create_import_space(
                     display_name=display_name,
                     description=description,
-                    create_time=datetime(2017, 1, 1, tzinfo=timezone.utc),
+                    create_time=datetime(2013, 1, 1, tzinfo=timezone.utc),
                 )
                 space_name = result["name"]
                 console.print(f"  [green]✓ Space created:[/green] {space_name}")
@@ -295,6 +295,7 @@ class MigrationExecutor:
                     console.print(f"  [cyan]Re-adding active members...[/cyan]")
                     readded = self._readd_members_active(
                         channel.slack_channel_id, space_name,
+                        channel_type=channel.channel_type,
                     )
                     console.print(f"  [green]✓ Re-added {readded} active members[/green]")
 
@@ -358,8 +359,15 @@ class MigrationExecutor:
 
         return count
 
-    def _readd_members_active(self, channel_id: str, space_name: str) -> int:
-        """Add members as active after completeImport."""
+    def _readd_members_active(
+        self, channel_id: str, space_name: str, channel_type: str = "",
+    ) -> int:
+        """Add members as active after completeImport.
+
+        For 1:1 DMs (im) and group DMs (mpim), members are added as
+        ROLE_MANAGER so both/all parties own the space equally.
+        """
+        role = "ROLE_MANAGER" if channel_type in ("im", "mpim") else "ROLE_MEMBER"
         count = 0
         with get_session() as session:
             all_mems = session.scalars(
@@ -374,7 +382,7 @@ class MigrationExecutor:
                     mem.migration_status = "skipped"
                     continue
                 try:
-                    self.chat.create_membership(space_name, user.google_email)
+                    self.chat.create_membership(space_name, user.google_email, role=role)
                     mem.migration_status = "migrated"
                     mem.migrated_at = now_utc()
                     mem.google_space_name = space_name
@@ -641,6 +649,16 @@ class MigrationExecutor:
             )
         ).all()
 
+        # Channel member emails — granted commenter access on any Drive uploads
+        commenter_emails = [
+            email for (email,) in session.execute(
+                select(User.google_email)
+                .join(Membership, Membership.slack_user_id == User.slack_user_id)
+                .where(Membership.slack_channel_id == channel_id)
+                .where(User.google_email.isnot(None))
+            ).all()
+        ]
+
         cards = []
         file_lines = []
         for f in files:
@@ -658,7 +676,9 @@ class MigrationExecutor:
 
             fname = f.filename or local_path.name
             if self.settings.google.file_upload_method == "google_drive":
-                url = self.files.upload_to_drive(local_path, fname)
+                url = self.files.upload_to_drive(
+                    local_path, fname, commenter_emails=commenter_emails,
+                )
                 if url:
                     f.google_attachment_name = url
                     f.uploaded_at = now_utc()

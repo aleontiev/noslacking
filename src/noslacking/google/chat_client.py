@@ -125,15 +125,20 @@ class GoogleChatClient:
         space_name: str,
         user_email: str,
         impersonate_email: str | None = None,
+        role: str = "ROLE_MEMBER",
     ) -> dict:
-        """Add an active member to a space (post-import mode)."""
+        """Add an active member to a space (post-import mode).
+
+        role: ROLE_MEMBER (default) or ROLE_MANAGER (space manager/owner).
+        """
         self._rate_limit()
         service = self._get_service(impersonate_email)
         body = {
             "member": {
                 "name": f"users/{user_email}",
                 "type": "HUMAN",
-            }
+            },
+            "role": role,
         }
         try:
             result = service.spaces().members().create(

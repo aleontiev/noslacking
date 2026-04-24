@@ -29,8 +29,8 @@ def _is_google_transient(exc: BaseException) -> bool:
 
 google_retry = retry(
     retry=retry_if_exception(_is_google_transient),
-    wait=wait_exponential(multiplier=1, min=2, max=120),
-    stop=stop_after_attempt(10),
+    wait=wait_exponential(multiplier=2, min=4, max=300),
+    stop=stop_after_attempt(15),
     before_sleep=before_sleep_log(logger, logging.WARNING),
     reraise=True,
 )

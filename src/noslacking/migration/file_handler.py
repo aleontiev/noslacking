@@ -64,8 +64,17 @@ class FileHandler:
             logger.error(f"Failed to upload {filename} to Chat: {e}")
             return None
 
-    def upload_to_drive(self, local_path: Path, filename: str) -> str | None:
-        """Upload a file to Google Drive. Returns the Drive file URL."""
+    def upload_to_drive(
+        self,
+        local_path: Path,
+        filename: str,
+        commenter_emails: list[str] | None = None,
+    ) -> str | None:
+        """Upload a file to Google Drive. Returns the Drive file URL.
+
+        If commenter_emails is provided, each gets commenter access on the
+        resulting file (the admin uploader keeps owner/edit access).
+        """
         from googleapiclient.http import MediaFileUpload
         from noslacking.google.auth import get_drive_service
 
@@ -79,7 +88,24 @@ class FileHandler:
             result = drive.files().create(
                 body=file_metadata, media_body=media, fields="id,webViewLink",
             ).execute()
+            file_id = result.get("id")
+            if file_id and commenter_emails:
+                self._grant_commenters(drive, file_id, commenter_emails)
             return result.get("webViewLink", "")
         except Exception as e:
             logger.error(f"Failed to upload {filename} to Drive: {e}")
             return None
+
+    def _grant_commenters(self, drive, file_id: str, emails: list[str]) -> None:
+        """Grant commenter role to each email on the given Drive file."""
+        admin_email = self.settings.google.admin_email
+        for email in {e for e in emails if e and e != admin_email}:
+            try:
+                drive.permissions().create(
+                    fileId=file_id,
+                    body={"role": "commenter", "type": "user", "emailAddress": email},
+                    sendNotificationEmail=False,
+                    fields="id",
+                ).execute()
+            except Exception as e:
+                logger.debug(f"Failed to grant commenter to {email} on {file_id}: {e}")
